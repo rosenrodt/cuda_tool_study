@@ -30,7 +30,6 @@
 // STEP 0x80: Improve shared memory accesses (reduce bank conflicts)
 // STEP 0x90: Use floats rather than ints (reduce pressure on arithmetic pipe)
 // STEP 0x91: Use floats and math intrinsics in sobel_filter (compile with --use_fast_math)
-// STEP
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -778,16 +777,7 @@ static void cuda_gaussian_filter(uchar *dst)
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaEventRecord(rtogEnd));
 
-  {
-    CHECK_CUDA(cudaEventRecord(totalEnd));
-    printf("Times:\n");
-    printf("-----------------------------------------------\n");
-    printf("rgb_to_grayscale kernel           : %4.2f ms\n", getElapsedTimeInMS(rtogStart, rtogEnd));
-    printf("gaussian_filter kernel            : n/a (didn't run)\n");
-    printf("sobel_filter kernel               : n/a (didn't run)\n");
-    printf("Total time in cuda_gaussian_filter: %4.2f ms\n", getElapsedTimeInMS(totalStart, totalEnd));
-    printf("\n");
-    
+  {   
     uchar* h_grayscale = new uchar[g_data.img_w * g_data.img_h];
     CHECK_CUDA(cudaMemcpy(h_grayscale, grayscale, sizeof(uchar)*g_data.img_w * g_data.img_h, cudaMemcpyDeviceToHost));
     cv::Mat result(g_data.img_h, g_data.img_w, CV_8UC1, h_grayscale);
