@@ -8,6 +8,8 @@
 
 #include <opencv2/opencv.hpp>
 
+#define DO_WARMUP
+
 //1 Coalescing
 //2 Occupancy
 //3 Shared Memory
@@ -748,7 +750,7 @@ static void cuda_gaussian_filter(uchar *dst)
   dim3 grid_dim(round_up(g_data.img_w, block_dim.x), round_up(g_data.img_h, block_dim.y));
 
 // The target.
-  uchar *grayscale = g_data.show == SHOW_GRAYSCALE ? dst : g_data.img_grayscale;
+  uchar *grayscale = g_data.img_grayscale;
 
 #ifdef DO_WARMUP
   //run rgba_to_grayscale once to warm up everything to get better and more stable timings
@@ -761,12 +763,6 @@ static void cuda_gaussian_filter(uchar *dst)
 
   //start total time timer
   CHECK_CUDA(cudaEventRecord(totalStart));
-
-  if( g_data.show == SHOW_RGBA )
-  {
-    CHECK_CUDA(cudaMemcpy(dst, g_data.img_rgba, g_data.img_w*g_data.img_h*sizeof(uchar4), cudaMemcpyDeviceToDevice));
-    return;
-  }
 
   // Convert from RGBA to Grayscale.
   dim3 block_dim_rgba(32, 8);
@@ -782,6 +778,12 @@ static void cuda_gaussian_filter(uchar *dst)
   CHECK_CUDA(cudaGetLastError());
   CHECK_CUDA(cudaEventRecord(rtogEnd));
 
+  {
+    uchar* h_grayscale = new uchar[g_data.img_w * g_data.img_h];
+    CHECK_CUDA(cudaMemcpy(h_grayscale, grayscale, sizeof(uchar)*g_data.img_w * g_data.img_h, cudaMemcpyDeviceToHost));
+    cv::Mat result(g_data.img_h, g_data.img_w, CV_8UC1, h_grayscale);
+    cv::imwrite("grayscale.jpg", result);
+  }
   // Exit if we don't need more.
   if( g_data.show == SHOW_GRAYSCALE ) {
     CHECK_CUDA(cudaEventRecord(totalEnd));
@@ -881,20 +883,13 @@ static void cuda_gaussian_filter(uchar *dst)
 void load_image(const char *filename)
 {
   cv::Mat img = cv::imread(filename, cv::IMREAD_COLOR);
-  cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
-  cv::imshow("preview original", img);
-  cv::waitKey(0);
+  cv::cvtColor(img, img, cv::COLOR_BGR2RGBA);
 
-  uchar *img_rgb = static_cast<uchar*>(img.data);
   int width = img.cols;
   int height = img.rows;
-  // Create the RGBA image on the host.
   int size_in_bytes = width*height*sizeof(uchar4);
 
-  uchar4 *img_rgba = (uchar4*)malloc(size_in_bytes);
-  CHECK(img_rgba);
-  for( int i = 0 ; i < width*height ; ++i )
-    img_rgba[i] = make_uchar4(img_rgb[3*i+0], img_rgb[3*i+1], img_rgb[3*i+2], 0);
+  uchar4 *img_rgba = reinterpret_cast<uchar4*>(img.data);
 
   // Setup the global data.
   g_data.img_w = width;
@@ -903,7 +898,6 @@ void load_image(const char *filename)
   // Allocate CUDA memory.
   CHECK_CUDA(cudaMalloc((void**) &g_data.img_rgba, size_in_bytes));
   CHECK_CUDA(cudaMemcpy(g_data.img_rgba, img_rgba, size_in_bytes, cudaMemcpyHostToDevice));
-  free(img_rgba);
 
   // Allocate other temp buffers.
   size_in_bytes = width*height*sizeof(uchar);
