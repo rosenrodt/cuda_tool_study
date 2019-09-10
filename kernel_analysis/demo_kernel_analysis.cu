@@ -779,13 +779,6 @@ static void cuda_gaussian_filter(uchar *dst)
   CHECK_CUDA(cudaEventRecord(rtogEnd));
 
   {
-    uchar* h_grayscale = new uchar[g_data.img_w * g_data.img_h];
-    CHECK_CUDA(cudaMemcpy(h_grayscale, grayscale, sizeof(uchar)*g_data.img_w * g_data.img_h, cudaMemcpyDeviceToHost));
-    cv::Mat result(g_data.img_h, g_data.img_w, CV_8UC1, h_grayscale);
-    cv::imwrite("grayscale.jpg", result);
-  }
-  // Exit if we don't need more.
-  if( g_data.show == SHOW_GRAYSCALE ) {
     CHECK_CUDA(cudaEventRecord(totalEnd));
     printf("Times:\n");
     printf("-----------------------------------------------\n");
@@ -794,12 +787,16 @@ static void cuda_gaussian_filter(uchar *dst)
     printf("sobel_filter kernel               : n/a (didn't run)\n");
     printf("Total time in cuda_gaussian_filter: %4.2f ms\n", getElapsedTimeInMS(totalStart, totalEnd));
     printf("\n");
-    return;
+    
+    uchar* h_grayscale = new uchar[g_data.img_w * g_data.img_h];
+    CHECK_CUDA(cudaMemcpy(h_grayscale, grayscale, sizeof(uchar)*g_data.img_w * g_data.img_h, cudaMemcpyDeviceToHost));
+    cv::Mat result(g_data.img_h, g_data.img_w, CV_8UC1, h_grayscale);
+    cv::imwrite("grayscale.jpg", result);
+    delete[] h_grayscale;
   }
 
   // The smoothed grayscale.
   uchar *smoothed_grayscale = grayscale;
-  if( g_data.show & SHOW_SMOOTHED_GRAYSCALE )
   {
     smoothed_grayscale = (g_data.show & SHOW_EDGES) ? g_data.img_smoothed_grayscale : dst;
     
@@ -839,23 +836,12 @@ static void cuda_gaussian_filter(uchar *dst)
 #endif
     CHECK_CUDA(cudaGetLastError());
     CHECK_CUDA(cudaEventRecord(gaussEnd));
-  }
 
-  // Exit if we don't need more.
-  if( !(g_data.show & SHOW_EDGES) ) {
-    CHECK_CUDA(cudaEventRecord(totalEnd));
-    printf("Times:\n");
-    printf("-----------------------------------------------\n");
-    printf("rgb_to_grayscale kernel           : %4.2f ms\n", getElapsedTimeInMS(rtogStart, rtogEnd));
-    if( g_data.show & SHOW_SMOOTHED_GRAYSCALE ) {
-      printf("gaussian_filter kernel            : %4.2f ms\n", getElapsedTimeInMS(gaussStart, gaussEnd));
-    } else {
-      printf("gaussian_filter kernel            : n/a (didn't run)\n");
-    }
-    printf("sobel_filter kernel               : n/a (didn't run)\n");
-    printf("Total time in cuda_gaussian_filter: %4.2f ms\n", getElapsedTimeInMS(totalStart, totalEnd));
-    printf("\n");
-    return;
+    uchar* h_smoothed_grayscale = new uchar[g_data.img_w * g_data.img_h];
+    CHECK_CUDA(cudaMemcpy(h_smoothed_grayscale, smoothed_grayscale, sizeof(uchar)*g_data.img_w * g_data.img_h, cudaMemcpyDeviceToHost));
+    cv::Mat result(g_data.img_h, g_data.img_w, CV_8UC1, h_smoothed_grayscale);
+    cv::imwrite("smoothed_grayscale.jpg", result);
+    delete[] h_smoothed_grayscale;
   }
 
   dim3 block_dim_sobel(32, 8);
@@ -878,6 +864,14 @@ static void cuda_gaussian_filter(uchar *dst)
   printf("sobel_filter kernel               : %4.2f ms\n", getElapsedTimeInMS(sobelStart, sobelEnd));
   printf("Total time in cuda_gaussian_filter: %4.2f ms\n", getElapsedTimeInMS(totalStart, totalEnd));
   printf("\n");
+
+  {
+    uchar* h_sobel = new uchar[g_data.img_w * g_data.img_h];
+    CHECK_CUDA(cudaMemcpy(h_sobel, dst, sizeof(uchar)*g_data.img_w * g_data.img_h, cudaMemcpyDeviceToHost));
+    cv::Mat result(g_data.img_h, g_data.img_w, CV_8UC1, h_sobel);
+    cv::imwrite("sobel.jpg", result);
+    delete[] h_sobel;
+  }
 }
 
 void load_image(const char *filename)
@@ -931,8 +925,6 @@ int main(int argc, char **argv)
   load_image(argv[argc-1]);
 
   {
-    g_data.show = SHOW_GRAYSCALE | SHOW_SMOOTHED_GRAYSCALE | SHOW_EDGES;
-
     uchar *dst = NULL;
     CHECK_CUDA(cudaMalloc((void**)&dst, g_data.img_w*g_data.img_h*sizeof(uchar)));
     cuda_gaussian_filter(dst);
