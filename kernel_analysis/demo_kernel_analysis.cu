@@ -213,16 +213,16 @@ __global__ void gaussian_filter_7x7_v0(int w, int h, const uchar *src, uchar *ds
     return;
 
   // Load the 48 neighbours and myself.
-  int n[7][7];
-  for( int j = -3 ; j <= 3 ; ++j )
-    for( int i = -3 ; i <= 3 ; ++i )
-      n[j+3][i+3] = in_img(x+i, y+j, w, h) ? (int) src[(y+j)*w + (x+i)] : 0;
+  // int n[7][7];
+  // for( int j = -3 ; j <= 3 ; ++j )
+  //   for( int i = -3 ; i <= 3 ; ++i )
+  //     n[j+3][i+3] = in_img(x+i, y+j, w, h) ? (int) src[(y+j)*w + (x+i)] : 0;
 
   // Compute the convolution.
   int p = 0;
   for( int j = 0 ; j < 7 ; ++j )
     for( int i = 0 ; i < 7 ; ++i )
-      p += gaussian_filter[j][i] * n[j][i];
+      p += gaussian_filter[j][i] * in_img(x+i, y+j, w, h) ? (int) src[(y+j)*w + (x+i)] : 0;
 
   // Store the result.
   dst[y*w + x] = (uchar) (p / 256);
@@ -272,28 +272,39 @@ __global__ void gaussian_filter_7x7_v2(int w, int h, const uchar *src, uchar *ds
   const int y = blockIdx.y*blockDim.y + threadIdx.y;
 
   // Shared memory.
-  __shared__ uchar smem_img[10][64];
+  __shared__ uchar smem_img[14][38];
 
   // Load pixels to SMEM.
-  uchar *smem_img_ptr = &smem_img[threadIdx.y][threadIdx.x];
-  for( int iy = y-3 ; iy <= blockIdx.y*blockDim.y+6 ; iy += 4, smem_img_ptr += 4*64 )
+  // uchar *smem_img_ptr = &smem_img[threadIdx.y][threadIdx.x];
+  // for( int iy = y-3 ; iy <= blockIdx.y*blockDim.y+6 ; iy += 4, smem_img_ptr += 4*64 )
+  // {
+  //   smem_img_ptr[ 0] = in_img(x- 3, iy, w, h) ? src[iy*w + (x -3)] : 0;
+  //   smem_img_ptr[32] = in_img(x+29, iy, w, h) ? src[iy*w + (x+29)] : 0; // 29 = 32-3.
+  // }
+  // printf("threadIdx.y %d, blockDim.y %d\n", threadIdx.y-3, blockDim.y+3);
+  for (int iy = (int)threadIdx.y-3 ; iy <= (int)blockDim.y+3 ; iy+=(int)blockDim.y)
   {
-    smem_img_ptr[ 0] = in_img(x- 3, iy, w, h) ? src[iy*w + (x -3)] : 0;
-    smem_img_ptr[32] = in_img(x+29, iy, w, h) ? src[iy*w + (x+29)] : 0; // 29 = 32-3.
+    for (int ix = (int)threadIdx.x-3 ; ix <= (int)blockDim.x+3 ; ix+=(int)blockDim.x)
+    {
+      int gx = ix + blockIdx.x*blockDim.x;
+      int gy = iy + blockIdx.y*blockDim.y;
+      // if(x==0 && y==0) printf("ix %d, iy %d, gx %d, gy %d\n", ix, iy, gx, gy);
+      smem_img[iy+3][ix+3] = in_img(gx, gy, w, h) ? src[gy*w + gx] : 0;
+    }
   }
   __syncthreads();
 
   // Load the 48 neighbours and myself.
-  int n[7][7];
-  for( int j = 0 ; j <= 6 ; ++j )
-    for( int i = 0 ; i <= 6 ; ++i )
-      n[j][i] = smem_img[threadIdx.y+j][threadIdx.x+i];
+  // int n[7][7];
+  // for( int j = 0 ; j <= 6 ; ++j )
+  //   for( int i = 0 ; i <= 6 ; ++i )
+  //     n[j][i] = smem_img[threadIdx.y+j][threadIdx.x+i];
 
   // Compute the convolution.
   int p = 0;
   for( int j = 0 ; j < 7 ; ++j )
     for( int i = 0 ; i < 7 ; ++i )
-      p += gaussian_filter[j][i] * n[j][i];
+      p += gaussian_filter[j][i] * smem_img[threadIdx.y+j][threadIdx.x+i];
 
   // Store the result.
   if( in_img(x, y, w, h) )
@@ -726,7 +737,7 @@ static void cuda_gaussian_filter(uchar *dst)
   dim3 block_dim(32, 4);
 #elif OPTIMIZATION_STEP == 0x40
   #define OPTIMIZATION_DESC "Using shared memory"
-  dim3 block_dim(32, 4);
+  dim3 block_dim(32, 8);
 #elif OPTIMIZATION_STEP == 0x50
   #define OPTIMIZATION_DESC "Using read-only path (reduce pressure on Load-store unit)"
   dim3 block_dim(32, 4);
