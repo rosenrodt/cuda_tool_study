@@ -8,7 +8,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#define DO_WARMUP
+#undef DO_WARMUP
 
 //1 Coalescing
 //2 Occupancy
@@ -794,7 +794,6 @@ static void cuda_gaussian_filter(uchar *dst)
 
 #if   OPTIMIZATION_STEP == 0x00
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
-	gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x1a
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x1b
@@ -852,7 +851,7 @@ static void cuda_gaussian_filter(uchar *dst)
   printf("rgb_to_grayscale kernel           : %4.2f ms\n", getElapsedTimeInMS(rtogStart, rtogEnd));
   printf("gaussian_filter kernel            : %4.2f ms\n", getElapsedTimeInMS(gaussStart, gaussEnd));
   printf("sobel_filter kernel               : %4.2f ms\n", getElapsedTimeInMS(sobelStart, sobelEnd));
-  printf("Total time in cuda_gaussian_filter: %4.2f ms\n", getElapsedTimeInMS(totalStart, totalEnd));
+  printf("Total time                        : %4.2f ms\n", getElapsedTimeInMS(rtogStart, rtogEnd) + getElapsedTimeInMS(gaussStart, gaussEnd) + getElapsedTimeInMS(sobelStart, sobelEnd));
   printf("\n");
 
   {

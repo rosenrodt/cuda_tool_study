@@ -1,9 +1,9 @@
-add_executable(cuda_test
+add_executable(hello_world
     hello_world.cu
 )
-target_link_libraries(cuda_test PRIVATE 
+target_link_libraries(hello_world PRIVATE 
     ${NVTOOLS_EXT}
 )
-target_compile_options(cuda_test PRIVATE
+target_compile_options(hello_world PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>
 )

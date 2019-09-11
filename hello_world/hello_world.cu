@@ -1,5 +1,7 @@
 #include <iostream> 
+#include <vector>
 #include <cuda.h>
+
 #include <nvToolsExt.h>
 
 struct Tracer 
@@ -15,21 +17,24 @@ struct Tracer
 #define PP_CAT(a, b) PP_CAT_I(a, b)
 #define PP_CAT_I(a, b) PP_CAT_II(~, a ## b)
 #define PP_CAT_II(p, res) res
-
 #define UNIQUE_NAME(base) PP_CAT(base, __COUNTER__)
 #define TRACER(name) Tracer UNIQUE_NAME(name)(#name)
 
 __global__ void compute_kernel(int* data)
 {
-    printf("hello world from kernel!\n");
+    int tid = threadIdx.x + blockDim.x*blockIdx.x;
+
+    data[tid] = tid;
+    if (tid == 0) printf("hello world from kernel!\n");
 }
 
 int main()
 {
+    size_t size = 4096;
     int* d_data = nullptr;
     {
         TRACER(malloc);
-        cudaMalloc(&d_data, sizeof(int)*4096);
+        cudaMalloc(&d_data, sizeof(int)*size);
     }
     {
         TRACER(kernelLaunch);
