@@ -313,16 +313,36 @@ __global__ void gaussian_filter_7x7_v2(int w, int h, const uchar *src, uchar *ds
   }
   __syncthreads();
 
+  // Load the 48 neighbours and myself.
+  int n[7][7];
+  for( int j = 0 ; j <= 6 ; ++j )
+    for( int i = 0 ; i <= 6 ; ++i )
+      n[j][i] = smem_img[threadIdx.y+j][threadIdx.x+i];
+
   // Compute the convolution.
   int p = 0;
   for( int j = 0 ; j < 7 ; ++j )
     for( int i = 0 ; i < 7 ; ++i )
-      p += gaussian_filter[j][i] * smem_img[threadIdx.y+j][threadIdx.x+i];
+      p += gaussian_filter[j][i] * n[j][i];
 
   // Store the result.
   if( in_img(x, y, w, h) )
     dst[y*w + x] = (uchar) (p / 256);
 }
+
+  // for (int iy = (2*(int)threadIdx.y-3) ; iy <= (int)blockDim.y+3 ; iy+=2*(int)blockDim.y)
+  // {
+  //   for (int ix = (int)threadIdx.x-3 ; ix <= (int)blockDim.x+3 ; ix+=(int)blockDim.x)
+  //   {
+  //     int gx = ix + blockIdx.x*blockDim.x;
+  //     int gy = iy + blockIdx.y*blockDim.y;
+  //     smem_img[iy+3][ix+3] = in_img(gx, gy, w, h) ? src[gy*w + gx] : 0;
+  //     if (iy+1+3<= (int)blockDim.y+3)
+  //       smem_img[iy+1+3][ix+3] = in_img(gx, gy+1, w, h) ? src[(gy+1)*w + gx] : 0;
+  //   }
+  // }
+  // __syncthreads();
+
 
 // ====================================================================================================================
 
@@ -736,15 +756,15 @@ static void cuda_gaussian_filter(uchar *dst)
 #  if OPTIMIZATION_STEP == 0x00 
   #define OPTIMIZATION_DESC "Original version"
   dim3 block_dim(8, 8);
-#elif OPTIMIZATION_STEP == 0x0a
-  #define OPTIMIZATION_DESC "Reduced register use"
-  dim3 block_dim(8, 8);
 #elif OPTIMIZATION_STEP == 0x1a
   #define OPTIMIZATION_DESC "Block size 32x2 (It. 1, Eclipse Edition)"
   dim3 block_dim(32, 2);
 #elif OPTIMIZATION_STEP == 0x1b
   #define OPTIMIZATION_DESC "Block size 8x16 (It 1, Visual Studio Edition)"
   dim3 block_dim(8, 16);
+#elif OPTIMIZATION_STEP == 0x1c
+  #define OPTIMIZATION_DESC "Reduced register use"
+  dim3 block_dim(32, 2);
 #elif OPTIMIZATION_STEP == 0x20
   #define OPTIMIZATION_DESC "Block size 32.4 (improve occupancy)"
   dim3 block_dim(32, 4);
@@ -827,12 +847,12 @@ static void cuda_gaussian_filter(uchar *dst)
 
 #if   OPTIMIZATION_STEP == 0x00
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
-#elif OPTIMIZATION_STEP == 0x0a
-    gaussian_filter_7x7_v0a<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x1a
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x1b
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
+#elif OPTIMIZATION_STEP == 0x1c
+    gaussian_filter_7x7_v0a<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x20
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x30
