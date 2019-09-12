@@ -201,8 +201,33 @@ __global__ void rgba_to_grayscale_kernel_v1(int w, int h, const uchar4 *src, uch
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 __global__ void gaussian_filter_7x7_v0(int w, int h, const uchar *src, uchar *dst)
+{
+  // Position of the thread in the image.
+  const int x = blockIdx.x*blockDim.x + threadIdx.x;
+  const int y = blockIdx.y*blockDim.y + threadIdx.y;
+
+  // Early exit if the thread is not in the image.
+  if( !in_img(x, y, w, h) )
+    return;
+
+  // Load the 48 neighbours and myself.
+  int n[7][7];
+  for( int j = -3 ; j <= 3 ; ++j )
+    for( int i = -3 ; i <= 3 ; ++i )
+      n[j+3][i+3] = in_img(x+i, y+j, w, h) ? (int) src[(y+j)*w + (x+i)] : 0;
+
+  // Compute the convolution.
+  int p = 0;
+  for( int j = 0 ; j < 7 ; ++j )
+    for( int i = 0 ; i < 7 ; ++i )
+      p += gaussian_filter[j][i] * n[j][i];
+
+  // Store the result.
+  dst[y*w + x] = (uchar) (p / 256);
+}
+
+__global__ void gaussian_filter_7x7_v0a(int w, int h, const uchar *src, uchar *dst)
 {
   // Position of the thread in the image.
   const int x = blockIdx.x*blockDim.x + threadIdx.x;
@@ -216,7 +241,7 @@ __global__ void gaussian_filter_7x7_v0(int w, int h, const uchar *src, uchar *ds
   int p = 0;
   for( int j = 0 ; j < 7 ; ++j )
     for( int i = 0 ; i < 7 ; ++i )
-      p += gaussian_filter[j][i] * in_img(x+i, y+j, w, h) ? (int) src[(y+j)*w + (x+i)] : 0;
+      p += (gaussian_filter[j][i] * (in_img(x+i, y+j, w, h) ? (int) src[(y+j)*w + (x+i)] : 0));
 
   // Store the result.
   dst[y*w + x] = (uchar) (p / 256);
@@ -708,8 +733,11 @@ static void cuda_gaussian_filter(uchar *dst)
   CHECK_CUDA(cudaEventCreate(&sobelEnd));
 
 // The size of the CUDA block/grid.
-#  if OPTIMIZATION_STEP == 0x00
+#  if OPTIMIZATION_STEP == 0x00 
   #define OPTIMIZATION_DESC "Original version"
+  dim3 block_dim(8, 8);
+#elif OPTIMIZATION_STEP == 0x0a
+  #define OPTIMIZATION_DESC "Reduced register use"
   dim3 block_dim(8, 8);
 #elif OPTIMIZATION_STEP == 0x1a
   #define OPTIMIZATION_DESC "Block size 32x2 (It. 1, Eclipse Edition)"
@@ -799,6 +827,8 @@ static void cuda_gaussian_filter(uchar *dst)
 
 #if   OPTIMIZATION_STEP == 0x00
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
+#elif OPTIMIZATION_STEP == 0x0a
+    gaussian_filter_7x7_v0a<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x1a
     gaussian_filter_7x7_v0<<<grid_dim, block_dim>>>(g_data.img_w, g_data.img_h, grayscale, smoothed_grayscale);
 #elif OPTIMIZATION_STEP == 0x1b
